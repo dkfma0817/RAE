@@ -85,7 +85,7 @@ def build_scheduler(
 
         def lr_lambda(step: int) -> float:
             if step < warmup_steps:
-                return 1.0
+                return (step + 1) / warmup_steps
             if step >= decay_end_steps:
                 return final_ratio
             progress = (step - warmup_steps) / total_decay_steps
@@ -95,7 +95,7 @@ def build_scheduler(
 
         def lr_lambda(step: int) -> float:
             if step < warmup_steps:
-                return 1.0
+                return (step + 1) / warmup_steps
             if step >= decay_end_steps:
                 return final_ratio
             progress = (step - warmup_steps) / total_decay_steps

@@ -398,7 +398,7 @@ def main():
                 recon_normed = recon * 2.0 - 1.0
                 rec_loss = F.l1_loss(recon, images)
                 if use_lpips:
-                    lpips_loss = lpips(images, recon)
+                    lpips_loss = lpips(real_normed, recon_normed)
                 else:
                     lpips_loss = rec_loss.new_zeros(())
                 recon_total = rec_loss + perceptual_weight * lpips_loss
@@ -407,14 +407,18 @@ def main():
                     fake_aug = disc_aug.aug(recon_normed)
                     logits_fake, _ = discriminator(fake_aug, None)
                     gan_loss = gen_loss_fn(logits_fake)
-                    adaptive_weight = calculate_adaptive_weight(
-                        recon_total, gan_loss, last_layer, max_d_weight
-                    )
-                    total_loss = recon_total + disc_weight * adaptive_weight * gan_loss
                 else:
                     gan_loss = torch.zeros_like(recon_total)
-                    adaptive_weight = torch.zeros_like(recon_total)
-                    total_loss = recon_total
+
+            # Calculate adaptive weight outside autocast (autograd operation, not forward pass)
+            if use_gan:
+                adaptive_weight = calculate_adaptive_weight(
+                    recon_total, gan_loss, last_layer, max_d_weight
+                )
+                total_loss = recon_total + disc_weight * adaptive_weight * gan_loss
+            else:
+                adaptive_weight = torch.zeros_like(recon_total)
+                total_loss = recon_total
 
             if scaler:
                 scaler.scale(total_loss).backward()
@@ -436,13 +440,19 @@ def main():
 
             disc_metrics: Dict[str, torch.Tensor] = {}
             if train_disc:
+                # Set model to eval mode and get fresh reconstruction with updated weights
+                ddp_model.eval()
                 discriminator.train()
                 for _ in range(disc_updates):
                     disc_optimizer.zero_grad(set_to_none=True)
                     with autocast(**autocast_kwargs):
-                        fake_detached = recon_normed.detach()
+                        # Fresh forward pass with updated model weights (no gradient)
+                        with torch.no_grad():
+                            z_disc = model_woddp.encode(images)
+                            recon_disc = model_woddp.decode(z_disc)
+                            recon_disc_normed = recon_disc * 2.0 - 1.0
                         # discretize
-                        fake_detached = fake_detached.clamp(-1.0, 1.0)
+                        fake_detached = recon_disc_normed.clamp(-1.0, 1.0)
                         fake_detached = torch.round((fake_detached + 1.0) * 127.5) / 127.5 - 1.0
                         fake_input = disc_aug.aug(fake_detached)
                         real_input = disc_aug.aug(real_normed)
@@ -463,6 +473,8 @@ def main():
                     if disc_scheduler is not None:
                         disc_scheduler.step()
                 discriminator.eval()
+                # Set model back to train mode
+                ddp_model.train()
 
             epoch_metrics["recon"] += rec_loss.detach()
             epoch_metrics["lpips"] += lpips_loss.detach()
