@@ -6,7 +6,7 @@ wandb
 /results/
 pretrained_models
 
-/models/
+# /models/
 __pycache__/
 *.pth
 .cache/
