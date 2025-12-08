@@ -336,27 +336,68 @@ class DiTwDDTHead(nn.Module):
         imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
         return imgs
 
-    def forward(self, x, t, y, s=None, mask=None):
+    # def forward(self, x, t, y, s=None, mask=None):
+    #     # x = self.x_embedder(x) + self.pos_embed
+    #     t = self.t_embedder(t)
+    #     y = self.y_embedder(y, self.training)
+    #     c = nn.functional.silu(t + y)
+    #     if s is None:
+    #         s = self.s_embedder(x)
+    #         if self.use_pos_embed:
+    #             s = s + self.pos_embed
+    #         # print(f"t shape: {t.shape}, y shape: {y.shape}, c shape: {c.shape}, s shape: {s.shape}, pos_embed shape: {self.pos_embed.shape}")
+    #         for i in range(self.num_encoder_blocks):
+    #             s = self.blocks[i](s, c, feat_rope=self.enc_feat_rope)
+    #         # broadcast t to s
+    #         t = t.unsqueeze(1).repeat(1, s.shape[1], 1)
+    #         s = nn.functional.silu(t + s)
+    #     s = self.s_projector(s)
+    #     x = self.x_embedder(x)
+    #     if self.use_pos_embed and self.x_pos_embed is not None:
+    #         x = x + self.x_pos_embed
+    #     for i in range(self.num_encoder_blocks, self.num_blocks):
+    #         x = self.blocks[i](x, s, feat_rope=self.dec_feat_rope)
+    #     x = self.final_layer(x, s)
+    #     x = self.unpatchify(x)
+    #     return x
+    
+    # 1. 인자에 text_embedding=None 추가
+    def forward(self, x, t, y=None, text_embedding=None, s=None, mask=None):
         # x = self.x_embedder(x) + self.pos_embed
         t = self.t_embedder(t)
-        y = self.y_embedder(y, self.training)
-        c = nn.functional.silu(t + y)
+        
+        # 2. 텍스트 임베딩이 들어오면 그걸 쓰고(우선순위), 아니면 기존 숫자(y)를 씀
+        if text_embedding is not None:
+            # text_embedding은 이미 Adapter를 통과해서 차원이 맞춰진 상태여야 함
+            cond = text_embedding
+        else:
+            # 기존 방식 (숫자가 들어왔을 때)
+            cond = self.y_embedder(y, self.training)
+            
+        # 3. c 계산할 때 y 대신 cond 사용
+        c = nn.functional.silu(t + cond) 
+
         if s is None:
             s = self.s_embedder(x)
             if self.use_pos_embed:
                 s = s + self.pos_embed
-            # print(f"t shape: {t.shape}, y shape: {y.shape}, c shape: {c.shape}, s shape: {s.shape}, pos_embed shape: {self.pos_embed.shape}")
+            # ... (이하 블록 루프 코드는 건드릴 필요 없음) ...
             for i in range(self.num_encoder_blocks):
                 s = self.blocks[i](s, c, feat_rope=self.enc_feat_rope)
+            
             # broadcast t to s
             t = t.unsqueeze(1).repeat(1, s.shape[1], 1)
             s = nn.functional.silu(t + s)
+            
         s = self.s_projector(s)
         x = self.x_embedder(x)
+        
         if self.use_pos_embed and self.x_pos_embed is not None:
             x = x + self.x_pos_embed
+            
         for i in range(self.num_encoder_blocks, self.num_blocks):
             x = self.blocks[i](x, s, feat_rope=self.dec_feat_rope)
+            
         x = self.final_layer(x, s)
         x = self.unpatchify(x)
         return x
