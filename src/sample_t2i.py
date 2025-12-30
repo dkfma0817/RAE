@@ -1,117 +1,127 @@
-import sys
 import os
+import sys
+import torch
+import numpy as np
+from tqdm import tqdm
+from omegaconf import OmegaConf
+from torchvision.utils import save_image # ★ 저장 함수 변경
 
-# 경로 설정 (필수)
+# 경로 설정
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import torch
-from torchvision.utils import save_image
-from omegaconf import OmegaConf
-from tqdm import tqdm
-
-# 모델 관련 임포트
 from models.t2i_model import RAE_T2I_Model
-# try:
-from utils.model_utils import instantiate_from_config
-# except ImportError:
-#     from utils.model_utils import instantiate_from_config
+try:
+    from src.utils.model_utils import instantiate_from_config
+except ImportError:
+    from utils.model_utils import instantiate_from_config
 
 # ==========================================
-# 1. RAE (디코더) 로드 함수
+# 1. 설정값
 # ==========================================
-def load_rae(config_path, device):
-    print(f"🧊 Loading RAE from {config_path}")
-    config = OmegaConf.load(config_path)
-    rae = instantiate_from_config(config.stage_1).to(device)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+checkpoint_path = "checkpoints/t2i_ep19.pt"  # 19에폭 체크포인트
+stage1_yaml = "configs/stage1/pretrained/SigLIP2.yaml" 
+model_name = "google/siglip-so400m-patch14-384"
+
+# ★ 학습 때 사용한 스케일링 값 (필수!)
+scale_factor = 0.1  
+
+# 생성할 프롬프트
+prompts = [
+    "A cute cat sitting on a sofa",
+    "A beautiful landscape of mountains and lake",
+    "A red apple on the plate"
+]
+
+# ==========================================
+# 2. 모델 로드
+# ==========================================
+def load_models():
+    print("🚀 Loading RAE (Decoder)...")
+    cfg = OmegaConf.load(stage1_yaml)
+    rae = instantiate_from_config(cfg.stage_1).to(device)
     rae.eval()
-    return rae
+    
+    # RAE Latent Dim 확인
+    rae_dim = rae.latent_dim if hasattr(rae, "latent_dim") else 768
 
-# ==========================================
-# 2. 간단한 Euler Sampler (노이즈 -> 이미지)
-# ==========================================
-@torch.no_grad()
-def sample_euler(model, z, prompts, steps=50):
-    """
-    Flow Matching을 위한 간단한 Euler Solver
-    z: 초기 노이즈 (Latent)
-    prompts: 텍스트 리스트
-    steps: 노이즈를 깎는 횟수
-    """
-    dt = 1.0 / steps  # 시간 간격
-    z_t = z.clone()   # 현재 Latent
-    
-    print(f"🎨 Sampling for prompts: {prompts}")
-    
-    # t=1 (노이즈) 에서 t=0 (깨끗한 이미지)으로 이동
-    for i in tqdm(range(steps)):
-        # 현재 시간 t 계산 (1.0 -> ... -> 0.0)
-        num_t = 1.0 - (i / steps)
-        
-        # 모델 입력용 t 텐서 만들기
-        t_input = torch.full((z.shape[0],), num_t, device=z.device, dtype=torch.float32)
-        
-        # 모델이 예측한 속도(velocity) v
-        # v = model(z_t, t, text)
-        velocity = model(z_t, t_input, prompts)
-        
-        # Euler Step: z_{t-1} = z_t - v * dt
-        z_t = z_t - velocity * dt
-        
-    return z_t # 최종 생성된 Latent (z_0)
-
-# ==========================================
-# 3. 실행 함수
-# ==========================================
-def run_sample():
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    
-    # --- 설정 ---
-    checkpoint_path = "checkpoints/t2i_experiment/epoch_1.pt" # 저장된 파일 경로
-    rae_config_path = "configs/stage1/pretrained/DINOv2-B.yaml"
-    
-    # 테스트할 프롬프트 (원하는 걸로 바꾸세요!)
-    prompts = [
-        "A photo of a cute dog",
-        "A red apple on a table"
-    ]
-    
-    # 1. T2I 모델 로드 & 체크포인트 적용
-    print("🔥 Loading Trained T2I Model...")
+    print("🚀 Loading DiT Model...")
     model = RAE_T2I_Model(
-        llm_name="Qwen/Qwen2.5-1.5B",
-        train_llm=False,
-        input_size=16,
-        in_channels=768
+        siglip_name=model_name,
+        train_text_encoder=False,
+        input_size=16,          
+        in_channels=rae_dim,
+        hidden_size=[1152, 2048],
+        depth=[28, 2],
+        num_heads=[16, 16],
     ).to(device)
     
-    # 저장된 가중치 불러오기
-    ckpt = torch.load(checkpoint_path, map_location=device)
-    model.load_state_dict(ckpt)
+    print(f"📥 Loading Weights from {checkpoint_path}")
+    state_dict = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(state_dict, strict=False) 
     model.eval()
     
-    # 2. RAE 로드 (이미지 복원용)
-    rae = load_rae(rae_config_path, device)
-    
-    # 3. 초기 노이즈 생성
-    # Latent Shape: [Batch, Channel, H, W]
-    batch_size = len(prompts)
-    z_noise = torch.randn(batch_size, 768, 16, 16).to(device)
-    
-    # 4. 샘플링 (DiT가 그림 그리기)
-    print("🎨 Generating Latents...")
-    generated_latents = sample_euler(model, z_noise, prompts, steps=30)
-    
-    # 5. 디코딩 (RAE가 이미지로 인쇄)
-    print("🖨️ Decoding to Pixels...")
-    with torch.no_grad():
-        # Latent가 (B, C, H, W)인지 (B, L, C)인지 확인 후 RAE 입력에 맞춤
-        # 보통 RAE decode는 (B, C, H, W)를 받거나 알아서 처리함
-        images = rae.decode(generated_latents)
-        
-    # 6. 저장
-    save_path = "result_epoch_1.png"
-    save_image(images, save_path, nrow=2, normalize=True, value_range=(-1, 1))
-    print(f"✅ Image saved to {save_path}")
+    return rae, model
 
+# ==========================================
+# 3. 오일러 샘플러 (핵심 수정 포함)
+# ==========================================
+@torch.no_grad()
+def sample(model, rae, prompt, steps=50, cfg_scale=4.0):
+    # (1) 텍스트 준비
+    text_inputs = [prompt]
+    uncond_inputs = [""] 
+    
+    # (2) 초기 노이즈 생성
+    # ★ 중요: RAE 테스트 성공 시 256x256이었으므로, 토큰 개수도 맞춰줍니다.
+    # SigLIP Patch Size = 16 이라고 가정하면: 256 / 16 = 16 grid
+    H = W = 16 
+    C = rae.latent_dim 
+    z = torch.randn(1, C, H, W).to(device)
+    
+    print(f"🎨 Generating: '{prompt}' (Shape: {z.shape})")
+    
+    # (3) Rectified Flow Sampling (Euler)
+    dt = 1.0 / steps 
+    for i in tqdm(range(steps)):
+        t_value = 1.0 - i * dt 
+        t = torch.tensor([t_value]).to(device)
+        
+        # CFG Guidance
+        v_cond = model(z, t, text_inputs)
+        v_uncond = model(z, t, uncond_inputs)
+        v_pred = v_uncond + cfg_scale * (v_cond - v_uncond)
+        
+        # Update (z_next = z - v * dt)
+        z = z - v_pred * dt
+
+    # (4) 디코딩 및 후처리 (여기가 제일 중요!)
+    # -------------------------------------------------
+    # ★ [필수] 학습 때 0.1 곱했으니, 0.1로 나눠서 복구!
+    z = z / scale_factor 
+    
+    with torch.cuda.amp.autocast():
+        img_tensor = rae.decode(z) 
+        
+    return img_tensor
+
+# ==========================================
+# 4. 실행 및 저장
+# ==========================================
 if __name__ == "__main__":
-    run_sample()
+    rae, model = load_models()
+    
+    os.makedirs("outputs", exist_ok=True)
+    
+    for prompt in prompts:
+        # 순서 주의: (model, rae)
+        img_tensor = sample(model, rae, prompt, steps=50, cfg_scale=4.0)
+        
+        save_name = f"outputs/{prompt.replace(' ', '_')[:20]}.png"
+        
+        # ★ [핵심 수정] torchvision의 save_image 활용
+        # normalize=True : 이미지 값의 최소~최대를 찾아서 0~1로 쫙 펴줍니다. (깨짐 방지)
+        # value_range : 명시하지 않으면 자동(min-max)으로 맞춥니다.
+        save_image(img_tensor, save_name, normalize=True)
+        
+        print(f"💾 Saved to {save_name}")

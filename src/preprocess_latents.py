@@ -65,14 +65,14 @@ def preprocess():
     
     dataloader = torch.utils.data.DataLoader(
         dataset, 
-        batch_size=64,
-        num_workers=8,
+        batch_size=32,
+        num_workers=4,
         collate_fn=custom_collate, # [중요] 커스텀 collate 적용
-        pin_memory=True
+        pin_memory=False
     )
 
     # 4. 저장용 Writer
-    sink = wds.ShardWriter(f"{output_dir}/cc12m-latents-%05d.tar", maxcount=1000)
+    sink = wds.ShardWriter(f"{output_dir}/cc12m-latents-%05d.tar", maxcount=500)
 
     print(" Start Extracting Latents... (This will take a while)")
     
