@@ -30,7 +30,7 @@ stage_2:
     use_rmsnorm: True
     wo_shift: False
     use_pos_embed: True
-  ckpt: '/scratch/x3098a02/RAE/results/stage2_siglip/003-DiTwDDTHead-Linear-velocity-none-bf16-acc1/checkpoints/0565000.pt'
+  ckpt: 'checkpoints/0565000.pt'
 
 transport:
   params:

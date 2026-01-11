@@ -1,100 +1,88 @@
 import torch
 import torch.nn as nn
-from transformers import AutoModel, AutoTokenizer 
-from src.stage2.models.DDT import DiTwDDTHead 
+from transformers import AutoModel, AutoTokenizer
+from src.stage2.models.DDT import DiTwDDTHead
 
 class SigLIPTextEncoder(nn.Module):
-    def __init__(self, model_name="google/siglip-so400m-patch14-384", trainable=False):
+    def __init__(self, model_name="google/siglip2-base-patch16-256", trainable=False, max_length=64):
         super().__init__()
-        print(f"Loading SigLIP Text Encoder: {model_name}...")
         self.trainable = trainable
-        
-        
-        self.model = AutoModel.from_pretrained(model_name)
-        self.model.to("cuda")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        
-        # Hidden Size 자동 감지
-        # SigLIP SO400M의 경우 text_config.hidden_size는 1152입니다.
-        if hasattr(self.model.config, "text_config"):
-             self.hidden_size = self.model.config.text_config.hidden_size
-        else:
-             # fallback
-             self.hidden_size = self.model.config.hidden_size
+        self.max_length = max_length
 
-        # 학습 여부 설정 (Frozen)
+        self.model = AutoModel.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+        if hasattr(self.model.config, "text_config"):
+            self.hidden_size = self.model.config.text_config.hidden_size
+        else:
+            self.hidden_size = self.model.config.hidden_size
+
         if not trainable:
             self.model.eval()
-            for param in self.model.parameters():
-                param.requires_grad = False
+            for p in self.model.parameters():
+                p.requires_grad = False
         else:
-            self.model.gradient_checkpointing_enable()
-            
-    def forward(self, text_list):
-        # SigLIP 토크나이징
+            # optional
+            if hasattr(self.model, "gradient_checkpointing_enable"):
+                self.model.gradient_checkpointing_enable()
+
+    def forward(self, text_list, device=None):
+        if device is None:
+            device = next(self.model.parameters()).device
+
         inputs = self.tokenizer(
-            text_list, 
-            return_tensors="pt", 
-            padding="max_length", # SigLIP은 고정 길이를 선호하는 편입니다
-            truncation=True, 
-            max_length=64 # 캡션 길이에 따라 조절 (보통 64~128)
-        ).to(self.model.device)
-        
+            text_list,
+            return_tensors="pt",
+            padding=True,          # max_length padding은 낭비 큼. 일단 True 권장.
+            truncation=True,
+            max_length=self.max_length,
+        )
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+
         if self.trainable:
-            outputs = self.model.text_model(**inputs)
+            out = self.model.text_model(**inputs) if hasattr(self.model, "text_model") else self.model(**inputs)
         else:
             with torch.no_grad():
-                # self.model.text_model을 호출하여 텍스트 인코딩만 수행
-                outputs = self.model.text_model(**inputs)
-        
-       
-        text_emb = outputs.pooler_output
-        
-        return text_emb.to(dtype=torch.float32)
+                out = self.model.text_model(**inputs) if hasattr(self.model, "text_model") else self.model(**inputs)
+
+        if hasattr(out, "pooler_output") and out.pooler_output is not None:
+            text_emb = out.pooler_output
+        else:
+            text_emb = out.last_hidden_state.mean(dim=1)
+
+        return text_emb.float()
 
 class SimpleProjector(nn.Module):
     def __init__(self, input_dim, output_dim):
         super().__init__()
-     
         self.net = nn.Sequential(
             nn.Linear(input_dim, output_dim),
-            nn.SiLU(),  # 비선형성 하나 정도는 있는 게 학습에 도움됨
-            nn.Linear(output_dim, output_dim) 
+            nn.LayerNorm(output_dim),   # ✅ 추가
+            nn.SiLU(),
+            nn.Linear(output_dim, output_dim),
         )
-
     def forward(self, x):
         return self.net(x)
 
+
 class RAE_T2I_Model(nn.Module):
     def __init__(
-        self, 
-        # SigLIP 모델명 예시
-        siglip_name="google/siglip-so400m-patch14-384", 
-        train_text_encoder=False, 
-        # RAE 설정값
-        input_size=32,          # 256x256 이미지 -> Patch 16이면 16x16=256 토큰, Patch 8이면 32x32=1024 토큰
-                                # *주의*: DiT 내부 설정과 RAE Latent 사이즈를 맞춰야 함
-        patch_size=[1, 1],      
-        in_channels=768,        
-        hidden_size=[1152, 2048], # [DiT Hidden, DDT Head Hidden]
+        self,
+        siglip_name="google/siglip2-base-patch16-256",
+        train_text_encoder=False,
+        input_size=16,
+        patch_size=[1, 1],
+        in_channels=768,
+        hidden_size=[1152, 2048],
         depth=[28, 2],
         num_heads=[16, 16],
         **dit_kwargs
     ):
         super().__init__()
-        
-        # 1. SigLIP 텍스트 인코더 (Frozen)
         self.text_encoder = SigLIPTextEncoder(siglip_name, trainable=train_text_encoder)
-        
-        # 2. Projector (Adapter 대체)
-        # SigLIP output(1152) -> DiT Hidden(1152)
-        # 차원이 같더라도 공간 매핑을 위해 Projector는 유지하는 게 좋습니다.
-        self.projector = SimpleProjector(
-            input_dim=self.text_encoder.hidden_size, 
-            output_dim=hidden_size[0] 
-        )
-        
-        # 3. DiT Backbone
+        self.projector = SimpleProjector(self.text_encoder.hidden_size, hidden_size[0])
+
+        # num_classes는 안전하게 1로 (안 쓰더라도)
         self.dit = DiTwDDTHead(
             input_size=input_size,
             patch_size=patch_size,
@@ -102,18 +90,23 @@ class RAE_T2I_Model(nn.Module):
             hidden_size=hidden_size,
             depth=depth,
             num_heads=num_heads,
-            num_classes=0, # Class label 대신 Text Embedding을 쓰므로 num_classes는 사용 안 함 (혹은 1)
+            num_classes=1,
             **dit_kwargs
         )
 
     def forward(self, x, t, text_list, s=None):
-        # 1. Text -> SigLIP Embedding [B, 1152]
-        text_emb = self.text_encoder(text_list) 
-        
-        # 2. Projection [B, 1152]
-        cond = self.projector(text_emb) 
-        
-        # 3. DiT
-        noise_pred = self.dit(x, t, text_embedding=cond, s=s)
-        
-        return noise_pred
+        device = x.device
+
+        # 1) text encode
+        text_emb = self.text_encoder(text_list, device=device)   # (B, text_dim)
+
+        # 2) projector
+        cond = self.projector(text_emb)                          # (B, hidden)
+
+        # ✅ [필수] L2 normalize (AdaLN 폭주 방지)
+        cond = cond / (cond.norm(dim=-1, keepdim=True) + 1e-6)
+
+        # ✅ [권장] condition strength를 약하게 시작 (너무 강하면 NaN 잘 남)
+        cond = 0.5 * cond   # 0.2~1.0 사이 조절 가능. 처음엔 0.5 추천.
+
+        return self.dit(x, t, text_embedding=cond, s=s)
