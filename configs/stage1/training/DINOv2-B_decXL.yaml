@@ -1,37 +1,143 @@
+# stage_1:
+#   target: stage1.RAE
+#   params:
+#     encoder_cls: 'Dinov2withNorm'
+#     encoder_config_path: 'facebook/dinov2-with-registers-base'
+#     encoder_input_size: 224
+#     encoder_params:
+#       dinov2_path: 'facebook/dinov2-with-registers-base'
+#       normalize: true
+#     decoder_config_path: 'configs/decoder/ViTXL'
+    
+#     # [중요 변경 1] VQ 학습 시에는 Noise를 끄는 게 좋습니다.
+#     # 기존 RAE는 Latent에 노이즈를 섞어서 Regularization을 하지만,
+#     # VQ는 이미 '양자화' 자체가 정보를 손실시키는 강력한 Bottleneck이라서
+#     # 노이즈까지 더해지면 학습이 불안정해질 수 있습니다.
+#     noise_tau: 0.0  # (원래 0.8이었음 -> 0.0으로 변경 추천)
+    
+#     reshape_to_2d: true
+    
+#     # [새로 추가한 부분]
+#     use_vq: true
+#     vq_codebook_size: 1024  # 코드북 크기 (1024, 4096, 8192 중 택1)
+
+
+# training:
+#   epochs: 32
+#   ema_decay: 0.998
+#   batch_size: 8 # per-proc bs
+#   num_workers: 8
+#   clip_grad: 0.0
+#   log_interval: 100
+#   checkpoint_interval: 2500
+#   sample_interval: 0
+#   optimizer:
+#     lr: 5.0e-5
+#     betas: [0.9, 0.95]
+#     weight_decay: 0.0
+#   scheduler:
+#     type: cosine
+#     warmup_epochs: 2          # 배치 작으면 warmup 조금 늘리는 게 안정적
+#     decay_end_epoch: 32       # epochs와 맞추기 (중요)
+#     base_lr: 5.0e-5           # optimizer.lr이랑 통일(아래 설명)
+#     final_lr: 5.0e-6
+
+
+# gan:
+#   disc:
+#     arch:
+#       dino_ckpt_path: 'models/discs/dino_vit_small_patch8_224.pth'
+#       ks: 9
+#       norm_type: 'bn'
+#       using_spec_norm: true
+#       recipe: 'S_8'
+#     optimizer:
+#       lr: 2.0e-4
+#       betas: [0.9, 0.95]
+#       weight_decay: 0.0
+#     scheduler:
+#       type: cosine
+#       warmup_epochs: 2
+#       decay_end_epoch: 32
+#       base_lr: 2.0e-4
+#       final_lr: 2.0e-5
+#     augment:
+#       prob: 1.0
+#       cutout: 0.0
+#   loss:
+#     disc_loss: hinge
+#     gen_loss: vanilla
+#     disc_weight: 0.25
+#     perceptual_weight: 1.0
+#     disc_start: 16
+#     disc_upd_start: 14
+#     lpips_start: 2
+#     max_d_weight: 10000.0
+#     disc_updates: 1
+
+
+
+
 stage_1:
   target: stage1.RAE
   params:
+    # -------- Encoder --------
     encoder_cls: 'Dinov2withNorm'
     encoder_config_path: 'facebook/dinov2-with-registers-base'
     encoder_input_size: 224
     encoder_params:
       dinov2_path: 'facebook/dinov2-with-registers-base'
       normalize: true
-    decoder_config_path: 'configs/decoder/ViTXL'
-    noise_tau: 0.8 # training 0.8, at inference time always set to 0
+
+    # -------- Decoder --------
+    decoder_config_path: '/workspace/Areum/RAE/configs/decoder/ViTXL'
+
+    # -------- Latent handling --------
+    noise_tau: 0.0              # 🔑 VQ에서는 반드시 0
     reshape_to_2d: true
-    #normalization_stat_path: 'models/stats/dinov2/wReg_base/imagenet1k/stat.pt'
+
+    # -------- VQ --------
+    use_vq: true
+    vq_codebook_size: 1024
+    vq_embed_dim: 256
+    vq_commitment_cost: 0.25
+    vq_decay: 0.99
+    vq_eps: 1.0e-5
+    vq_z_norm: true
+
+    # -------- PCA reweighting --------
+    pca_stat_path: '/workspace/Areum/RAE/results/pca_stats_1m.pth'
+    pca_alpha: 0.25
+    pca_eps: 1.0e-6
 
 
 training:
-  epochs: 16
-  ema_decay: 0.9978
-  batch_size: 32 # per-proc bs
+  # -------- Runtime --------
+  epochs: 8                 # 🔥 32 → 8 (현실적으로 충분)
+  ema_decay: 0.998
+
+  batch_size: 8             # per-GPU
   num_workers: 8
   clip_grad: 0.0
+
   log_interval: 100
-  checkpoint_interval: 5000
+  checkpoint_interval: 2500
   sample_interval: 0
+
+  # -------- Optimizer --------
   optimizer:
-    lr: 2.0e-4
+    lr: 5.0e-5               # 낮은 lr이 VQ 안정적
     betas: [0.9, 0.95]
     weight_decay: 0.0
+
+  # -------- Scheduler --------
   scheduler:
     type: cosine
     warmup_epochs: 1
-    decay_end_epoch: 16
-    base_lr: 2.0e-4
-    final_lr: 2.0e-5
+    decay_end_epoch: 8
+    base_lr: 5.0e-5
+    final_lr: 5.0e-6
+
 
 gan:
   disc:
@@ -41,26 +147,129 @@ gan:
       norm_type: 'bn'
       using_spec_norm: true
       recipe: 'S_8'
+
     optimizer:
       lr: 2.0e-4
       betas: [0.9, 0.95]
       weight_decay: 0.0
+
     scheduler:
       type: cosine
       warmup_epochs: 1
-      decay_end_epoch: 16
+      decay_end_epoch: 8
       base_lr: 2.0e-4
       final_lr: 2.0e-5
+
     augment:
       prob: 1.0
       cutout: 0.0
+
   loss:
     disc_loss: hinge
     gen_loss: vanilla
-    disc_weight: 0.75
+
+    disc_weight: 0.25
     perceptual_weight: 1.0
-    disc_start: 8
-    disc_upd_start: 6
-    lpips_start: 0
+
+    disc_start: 4          # 🔥 원래 16 → 4
+    disc_upd_start: 3
+    lpips_start: 1
+
     max_d_weight: 10000.0
     disc_updates: 1
+
+
+
+
+
+######## subset 으로 하는거 @#########
+
+# stage_1:
+#   target: stage1.RAE
+#   params:
+#     # -------- Encoder --------
+#     encoder_cls: 'Dinov2withNorm'
+#     encoder_config_path: 'facebook/dinov2-with-registers-base'
+#     encoder_input_size: 224
+#     encoder_params:
+#       dinov2_path: 'facebook/dinov2-with-registers-base'
+#       normalize: true
+
+#     # -------- Decoder --------
+#     decoder_config_path: 'configs/decoder/ViTXL'
+
+#     # -------- Latent handling --------
+#     noise_tau: 0.0              # 🔑 VQ에서는 반드시 0
+#     reshape_to_2d: true
+
+#     # -------- VQ --------
+#     use_vq: true
+#     vq_codebook_size: 512
+#     vq_embed_dim: 256
+#     vq_commitment_cost: 0.25
+#     vq_decay: 0.99
+#     vq_eps: 1.0e-5
+#     vq_z_norm: false
+
+#     # -------- PCA reweighting --------
+#     # pca_stat_path: 'results/pca_stats_1m.pth'
+#     pca_stat_path: 'results/sub_pca.pth'
+#     pca_alpha: 0.25
+#     pca_eps: 1.0e-6
+
+
+# training:
+#   # -------- Runtime --------
+#   epochs: 120                 # 🔥 32 → 8 (현실적으로 충분)
+#   ema_decay: 0.998
+
+#   batch_size: 8             # per-GPU
+#   num_workers: 8
+#   clip_grad: 0.0
+
+#   log_interval: 100
+#   checkpoint_interval: 0 # 이거 수정해야함
+#   sample_interval: 0
+
+#   # -------- Optimizer --------
+#   optimizer:
+#     lr: 5.0e-5               # 낮은 lr이 VQ 안정적
+#     betas: [0.9, 0.95]
+#     weight_decay: 0.0
+
+#   # -------- Scheduler --------
+#   scheduler:
+#     type: cosine
+#     warmup_epochs: 1
+#     decay_end_epoch: 40
+#     base_lr: 5.0e-5
+#     final_lr: 5.0e-6
+
+# gan:
+#   disc:  # <- 이 블록은 반드시 존재해야 함 (지금 코드가 요구함)
+#     arch:
+#       dino_ckpt_path: 'models/discs/dino_vit_small_patch8_224.pth'
+#       ks: 9
+#       norm_type: 'bn'
+#       using_spec_norm: true
+#       recipe: 'S_8'
+#     optimizer:
+#       lr: 2.0e-4
+#       betas: [0.9, 0.95]
+#       weight_decay: 0.0
+#     scheduler:
+#       type: cosine
+#       warmup_epochs: 1
+#       decay_end_epoch: 40
+#       base_lr: 2.0e-4
+#       final_lr: 2.0e-5
+#     augment:
+#       prob: 1.0
+#       cutout: 0.0
+
+#   loss:
+#     disc_weight: 0.0          # ✅ GAN OFF
+#     perceptual_weight: 0.0    # ✅ LPIPS OFF
+#     disc_start: 999999
+#     disc_upd_start: 999999
+#     lpips_start: 999999

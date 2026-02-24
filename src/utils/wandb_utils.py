@@ -10,7 +10,12 @@ import math
 
 
 def is_main_process():
+    if not dist.is_available():
+        return True
+    if not dist.is_initialized():
+        return True
     return dist.get_rank() == 0
+
 
 def namespace_to_dict(namespace):
     return {
@@ -26,15 +31,23 @@ def generate_run_id(exp_name):
 
 def initialize(args, entity, exp_name, project_name):
     config_dict = namespace_to_dict(args)
-    wandb.login(key=os.environ["WANDB_KEY"])
+
+    # 로그인은 이미 되어있으면 자동으로 사용됨(netrc).
+    # WANDB_KEY가 있으면 그걸로도 로그인 가능하게.
+    key = os.environ.get("WANDB_KEY", None)
+    if key:
+        wandb.login(key=key)
+
     wandb.init(
         entity=entity,
         project=project_name,
         name=exp_name,
         config=config_dict,
         id=generate_run_id(exp_name),
-        resume="allow",
+        # resume="allow",
+        resume=False
     )
+
 
 
 def log(stats, step=None):

@@ -13,3 +13,34 @@ __pycache__/
 /checkpoints/
 upload_to_hf.py
 /*.png
+
+# ===== Models / Checkpoints =====
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+adapter_ckpts/
+pca_results/
+models/
+
+# ===== Data =====
+imagenette2/
+imagenette_debug/
+kaggle/
+
+# ===== Outputs =====
+logs/
+out/
+runs/
+eval_imgs/
+repeat/
+*.log
+nohup.out
+code_vis/
+
+# ===== Python =====
+__pycache__/
+*.pyc
+
+# ===== Misc =====
+.env

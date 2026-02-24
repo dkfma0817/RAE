@@ -1,0 +1,444 @@
+# pca 추출
+python src/get_pca.py   --config configs/stage1/training/DINOv2-B_decXL.yaml   --data-path "/dataset/imagenet-1k/data/train-*.parquet"   --image-size 256   --batch-size 32   --num-workers 6   --num-tokens 1000000   --tokens-per-batch 8192   --fp16   --save-path results/pca_stats_1m.pth
+
+# 0113 3번째 ... Imagenet-1k 로 처음 바꿔서 하는 것
+CUDA_VISIBLE_DEVICES=2,3 nohup torchrun --nproc_per_node=2 src/train_stage1.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --data-path "/dataset/imagenet-1k/data/train-*.parquet" \
+  --results-dir results \
+  --precision bf16 \
+  > vq_0113_2.log 2>&1 &
+
+
+
+# 0114 pca 추출
+python src/get_pca.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --data-path "/dataset/imagenet-1k/data/train-*.parquet" \
+  --image-size 256 \
+  --batch-size 32 \
+  --num-workers 6 \
+  --num-tokens 1000000 \
+  --tokens-per-batch 8192 \
+  --fp16 \
+  --save-path results/pca_stats_1m.pth
+
+
+nohup python src/train_stage1.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --data-path "/dataset/imagenet-1k/data/train-*.parquet" \
+  --image-size 256 \
+  --precision fp16 \
+  --results-dir pca_results \
+  > vq_pca.log 2>&1 &
+
+
+
+# 0115 
+
+# 데이터셋 작은걸로다가 pca 뽑기 .. 
+CUDA_VISIBLE_DEVICES=2 python src/get_pca.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --data-path imagenette_debug/train \
+  --image-size 256 \
+  --batch-size 32 \
+  --num-workers 6 \
+  --num-tokens 200000 \
+  --tokens-per-batch 8192 \
+  --fp16 \
+  --save-path results/sub_pca.pth
+
+
+CUDA_VISIBLE_DEVICES=2 nohup torchrun --nproc_per_node=1 src/train_stage1.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --data-path imagenette_debug/train \
+  --results-dir sub_results \
+  --precision bf16 \
+  --wandb \
+  > sub_vq.log 2>&1 &
+
+# 0116
+# 이렇게 했을 때 서버 꺼지면 꺼짐 .. 
+  CUDA_VISIBLE_DEVICES=2 nohup torchrun --nproc_per_node=1 src/train_stage1.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --data-path imagenette_debug/train \
+  --results-dir sub_results \
+  --precision bf16 \
+  > sub_vq2.log 2>&1 &
+  
+# 이렇게 하니까 vscode 꺼도 계속 돌아가지긴 함 .. 
+CUDA_VISIBLE_DEVICES=2 setsid -f torchrun --nproc_per_node=1 src/train_stage1.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --data-path imagenette_debug/train \
+  --results-dir sub_results \
+  --precision bf16 \
+  > sub_vq2.log 2>&1
+
+
+CUDA_VISIBLE_DEVICES=2 setsid -f torchrun --nproc_per_node=1 src/train_stage1.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --data-path imagenette_debug/train \
+  --results-dir sub_results2 \
+  --precision bf16 \
+  --wandb \
+  > sub_vq3.log 2>&1
+
+
+CUDA_VISIBLE_DEVICES=2 setsid -f torchrun --nproc_per_node=1 src/train_stage1.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --data-path imagenette_debug/train \
+  --results-dir sub_results3 \
+  --precision bf16 \
+  --wandb \
+  > sub_vq4.log 2>&1
+
+
+
+# 0119
+python src/get_pca.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --data-path "/dataset/imagenet-1k/data/train-*.parquet" \
+  --image-size 256 \
+  --batch-size 32 \
+  --num-workers 6 \
+  --num-tokens 1000000 \
+  --tokens-per-batch 8192 \
+  --fp16 \
+  --save-path results/pca_stats_1m.pth
+
+
+
+CUDA_VISIBLE_DEVICES=2 nohup python src/train_stage1.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --data-path "/dataset/imagenet-1k/data/train-*.parquet" \
+  --image-size 256 \
+  --precision fp16 \
+  --results-dir dual_results2 \
+  --wandb \
+  > logs/dual2.log 2>&1 &
+  1462476
+
+CUDA_VISIBLE_DEVICES=2 nohup python src/train_stage1.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --data-path "/dataset/imagenet-1k/data/train-*.parquet" \
+  --image-size 256 \
+  --precision fp16 \
+  --results-dir dual_results2 \
+  --wandb \
+  > logs/dual3.log 2>&1 &
+  
+
+CUDA_VISIBLE_DEVICES=2 nohup python src/train_stage1.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --data-path "/dataset/imagenet-1k/data/train-*.parquet" \
+  --image-size 256 \
+  --precision fp16 \
+  --results-dir dual_claude \
+  --wandb \
+  > logs/dual_claude.log 2>&1 &
+  1651880
+
+
+
+CUDA_VISIBLE_DEVICES=0 nohup python src/train_adapter.py > logs/claude2.log 2>&1 &
+229238
+
+
+
+CUDA_VISIBLE_DEVICES=0 python src/train_gpt2.py \
+  --mode dino \
+  --csv /dataset/flickr30k/flickr_annotations_30k.csv \
+  --imgdir /dataset/flickr30k/flickr30k-images \
+  --img_col filename \
+  --cap_col raw \
+  --split_col split \
+  --batch 16 --epochs 3 --lr 2e-4 \
+  --outdir runs/flickr_prefix_gpt2
+
+
+CUDA_VISIBLE_DEVICES=0 python src/train_gpt2.py \
+  --mode vq \
+  --csv /dataset/flickr30k/flickr_annotations_30k.csv \
+  --imgdir /dataset/flickr30k/flickr30k-images \
+  --img_col filename \
+  --cap_col raw \
+  --split_col split \
+  --rae_config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --rae_ckpt pca_results/008-RAE/checkpoints/1280000.pt \
+  --grid_hw 16 --vq_emb_dim 256 \
+  --batch 16 --epochs 3 --lr 2e-4 \
+  --outdir runs/flickr_prefix_gpt2
+
+
+
+CUDA_VISIBLE_DEVICES=0 python src/eval_generate.py \
+  --csv /dataset/flickr30k/flickr_annotations_30k.csv \
+  --imgdir /dataset/flickr30k/flickr30k-images \
+  --img_col filename --cap_col raw --split_col split \
+  --dino_ckpt runs/flickr_prefix_gpt2/dino_best.pt \
+  --vq_ckpt runs/flickr_prefix_gpt2/vq_best.pt \
+  --rae_config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --rae_ckpt pca_results/008-RAE/checkpoints/1280000.pt \
+  --n 20 --max_new_tokens 32 \
+  --out runs/flickr_prefix_gpt2/qual_compare.md
+
+
+
+######### 260130
+
+# 오버피팅 해보기
+CUDA_VISIBLE_DEVICES=0 python src/train_gpt2.py \
+  --mode dino \
+  --csv /dataset/flickr30k/flickr_annotations_30k.csv \
+  --imgdir /dataset/flickr30k/flickr30k-images \
+  --img_col filename --cap_col raw --split_col split \
+  --overfit_image 1000092795.jpg \
+  --batch 1 --epochs 50 --lr 1e-3 \
+  --overfit_repeat 50 \
+  --outdir runs/overfit_1img_dino
+
+# 오버피팅 한 다이노 테스트해보기
+CUDA_VISIBLE_DEVICES=0 python src/eval_generate.py \
+  --csv /dataset/flickr30k/flickr_annotations_30k.csv \
+  --imgdir /dataset/flickr30k/flickr30k-images \
+  --img_col filename --cap_col raw --split_col split \
+  --dino_ckpt runs/overfit_1img_dino/dino_best.pt \
+  --vq_ckpt runs/overfit_1img_dino/dino_best.pt \
+  --n 1 --max_new_tokens 32 \
+  --out runs/overfit_1img_dino/qual_check.md
+
+# 오버피팅 한 vq 테스트
+CUDA_VISIBLE_DEVICES=0 python src/eval_generate.py \
+  --only both \
+  --csv /dataset/flickr30k/flickr_annotations_30k.csv \
+  --imgdir /dataset/flickr30k/flickr30k-images \
+  --img_col filename --cap_col raw --split_col split \
+  --one_image 1000092795.jpg \
+  --dino_ckpt runs/overfit_1img_dino/dino_best.pt \
+  --vq_ckpt runs/overfit_1img_vq/vq_best.pt \
+  --n 1 --max_new_tokens 32 \
+  --out runs/overfit_compare_1img.md
+
+
+CUDA_VISIBLE_DEVICES=0 nohup python src/train_gpt2.py \
+  --mode dino \
+  --csv /dataset/flickr30k/flickr_annotations_30k.csv \
+  --imgdir /dataset/flickr30k/flickr30k-images \
+  --img_col filename --cap_col raw --split_col split \
+  --batch 32 \
+  --epochs 10 \
+  --lr 5e-4 \
+  --grid_hw 16 \
+  --max_text_len 40 \
+  --outdir runs/flickr_dino_tuned \
+  > logs/train_dino_tuned.log 2>&1 &
+854076
+
+
+CUDA_VISIBLE_DEVICES=1 nohup python src/train_gpt2.py \
+  --mode vq \
+  --csv /dataset/flickr30k/flickr_annotations_30k.csv \
+  --imgdir /dataset/flickr30k/flickr30k-images \
+  --img_col filename --cap_col raw --split_col split \
+  --batch 32 \
+  --epochs 10 \
+  --lr 5e-4 \
+  --grid_hw 16 \
+  --max_text_len 40 \
+  --outdir runs/flickr_vq_tuned \
+  > logs/train_vq_tuned.log 2>&1 &
+854339
+
+
+CUDA_VISIBLE_DEVICES=0 python src/eval_generate.py \
+  --only both \
+  --csv /dataset/flickr30k/flickr_annotations_30k.csv \
+  --imgdir /dataset/flickr30k/flickr30k-images \
+  --img_col filename --cap_col raw --split_col split \
+  --split val \
+  --dino_ckpt runs/flickr_dino_tuned/dino_best.pt \
+  --vq_ckpt runs/flickr_vq_tuned/vq_best.pt \
+  --n 20 --max_new_tokens 32 \
+  --out runs/qual_dino_vs_vq_g16.md
+
+
+CUDA_VISIBLE_DEVICES=0 nohup python src/train_gpt2.py \
+  --mode dino \
+  --csv /dataset/flickr30k/flickr_annotations_30k.csv \
+  --imgdir /dataset/flickr30k/flickr30k-images \
+  --img_col filename --cap_col raw --split_col split \
+  --batch 32 \
+  --epochs 20 \
+  --lr 5e-4 \
+  --grid_hw 16 \
+  --use_fast_processor \
+  --unfreeze_ln_f \
+  --unfreeze_lm_head \
+  --outdir runs/flickr_dino_final \
+  > logs/train_dino_final.log 2>&1 &
+927391
+
+
+CUDA_VISIBLE_DEVICES=2 nohup python src/train_gpt2.py \
+  --mode vq \
+  --csv /dataset/flickr30k/flickr_annotations_30k.csv \
+  --imgdir /dataset/flickr30k/flickr30k-images \
+  --img_col filename --cap_col raw --split_col split \
+  --batch 32 \
+  --epochs 20 \
+  --lr 5e-4 \
+  --grid_hw 16 \
+  --vq_emb_dim 256 \
+  --unfreeze_ln_f \
+  --unfreeze_lm_head \
+  --outdir runs/flickr_vq_final \
+  > logs/train_vq_final.log 2>&1 &
+928893
+
+CUDA_VISIBLE_DEVICES=1 python src/eval_generate.py \
+  --csv /dataset/flickr30k/flickr_annotations_30k.csv \
+  --imgdir /dataset/flickr30k/flickr30k-images \
+  --img_col filename \
+  --cap_col raw \
+  --split_col split \
+  --dino_ckpt runs/flickr_dino_final/dino_best.pt \
+  --vq_ckpt runs/flickr_vq_final/vq_best.pt \
+  --n 20 \
+  --max_new_tokens 30 \
+  --out runs/flickr_compare_final.md
+
+
+
+
+## 0202
+
+python src/stage1_sample.py \
+  --config configs/stage1/pretrained/DINOv2-B.yaml \
+  --image recon2.png \
+  --output recon3.png
+
+
+
+  python src/recon_repeat.py \
+  --config configs/stage1/pretrained/DINOv2-B.yaml \
+  --image assets/pixabay_cat.png \
+  --steps 30 \
+  --save_all \
+  --outdir repeat/cat_iter30
+
+
+python src/stage1_indempotence.py \
+  --config configs/stage1/pretrained/DINOv2-B.yaml \
+  --run_dir /workspace/Areum/RAE/repeat/cat_iter10
+
+
+python src/stage1_freq.py \
+  --run_dir /workspace/Areum/RAE/repeat/cat_iter10 \
+  --device cpu
+
+
+
+python src/latent_drift.py \
+  --config configs/stage1/pretrained/DINOv2-B.yaml \
+  --image assets/pixabay_cat.png \
+  --steps 30 \
+  --save_all \
+  --outdir repeat/latent
+
+python src/recon_repeat.py \
+  --config configs/stage1/pretrained/DINOv2-B.yaml \
+  --image assets/pixabay_cat.png \
+  --steps 30 \
+  --save_all \
+  --outdir repeat/cat_nocls
+
+
+python src/stage1_sample.py \
+  --config configs/stage1/pretrained/DINOv2-B.yaml \
+  --image assets/pixabay_cat.png \
+  --output test_arch_nocls.png
+
+# 요건 decoder.py 수정
+python src/recon_repeat.py \
+  --config configs/stage1/pretrained/DINOv2-B.yaml \
+  --image assets/pixabay_cat.png \
+  --steps 30 \
+  --save_all \
+  --outdir repeat/cat_nocls2
+
+
+python src/latent_drift.py \
+  --config configs/stage1/pretrained/DINOv2-B.yaml \
+  --image assets/pixabay_cat.png \
+  --steps 30 \
+  --outdir repeat/latent_arch_nocls
+
+# 다른 vae 모델로 테스트
+python src/SDXL_test.py \
+  --vae stabilityai/sdxl-vae \
+  --image assets/pixabay_cat.png \
+  --steps 30 \
+  --deterministic \
+  --dtype fp32 \
+  --save_all \
+  --outdir repeat/sdxlvae_cat_fp32
+
+
+python src/flux_test.py \
+    --image assets/pixabay_cat.png \
+    --steps 30 \
+    --outdir repeat/flux_vae
+
+
+
+######## 0204
+CUDA_VISIBLE_DEVICES=1 nohup python train.py \
+  --only_prefix \
+  --data /dataset/flickr30k/features/clipcap_flickr30k_train.pkl \
+  --out_dir runs/flickr30k_clip_onlyprefix \
+  --epochs 20 \
+  --prefix_length 10 \
+  > flickr30k_clip_onlyprefix.log 2>&1 &
+62059
+
+
+python src/extract_rae_cont.py \
+  --config configs/stage1/pretrained/DINOv2-B.yaml \
+  --split_json /dataset/flickr30k/coco_fmt/train.json \
+  --out_pt /dataset/flickr30k/features/features_rae_cont.pt \
+  --batch_size 64
+
+
+## clip 버전
+python make_clipcap_pkl.py \
+  --coco_json /dataset/flickr30k/coco_fmt/train.json \
+  --feat_pt /dataset/flickr30k/features/features_clip.pt \
+  --out_pkl /dataset/flickr30k/features/clipcap_flickr30k_clip_train.pkl
+
+## 그냥 rae버전
+python make_clipcap_pkl.py \
+  --coco_json /dataset/flickr30k/coco_fmt/train.json \
+  --feat_pt /dataset/flickr30k/features/features_rae_cont.pt \
+  --out_pkl /dataset/flickr30k/features/clipcap_flickr30k_raecont_train.pkl
+
+
+nohup python train.py \
+  --only_prefix \
+  --data /dataset/flickr30k/features/clipcap_flickr30k_raecont_train.pkl \
+  --out_dir runs/flickr30k_raecont_onlyprefix \
+  --epochs 20 \
+  --prefix_length 10 \
+  > flickr30k_raecont_onlyprefix.log 2>&1 &
+102792
+
+
+
+python test_clip.py \
+  --ckpt runs/flickr30k_clip_onlyprefix/coco_prefix-019.pt \
+  --coco_json /dataset/flickr30k/coco_fmt/test.json \
+  --image_dir /dataset/flickr30k/flickr30k-images \
+  --out_json runs/flickr30k_clip_onlyprefix/pred_test.json \
+  --prefix_length 10
+
+
+
