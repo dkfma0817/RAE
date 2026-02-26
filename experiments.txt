@@ -442,3 +442,129 @@ python test_clip.py \
 
 
 
+
+## 0224
+
+python src/test_manipulation.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --ckpt pca_results/008-RAE/checkpoints/1280000.pt \
+  --img_a dog2.png \
+  --img_b cat.png \
+  --task swap \
+  --extent 4 \
+  --save out_swap.png
+
+
+python src/swap.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --ckpt pca_results/008-RAE/checkpoints/1280000.pt \
+  --img_a dog2.png \
+  --img_b cat.png \
+  --mode center \
+  --extent 4 \
+  --save out/swap_center_e4.png
+
+python src/top_codes.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --ckpt pca_results/008-RAE/checkpoints/1280000.pt \
+  --img_a dog2.png \
+  --img_b cat.png \
+  --topk 10 \
+  --outdir out/topcodes
+
+python src/top_codes.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --ckpt pca_results/008-RAE/checkpoints/1280000.pt \
+  --img_a dog2.png \
+  --img_b cat.png \
+  --topk 10 \
+  --outdir out/topcodes \
+  --roi 4 12 4 12 \
+  --roi_topk 10 \
+  --roi_spec_topk 10
+
+python src/swap.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --ckpt pca_results/008-RAE/checkpoints/1280000.pt \
+  --img_a dog2.png \
+  --img_b cat.png \
+  --mode roi_swap \
+  --roi_a 4 12 4 12 \
+  --roi_b 1 9 8 16 \
+  --save out/swap_face_roi.png
+
+python src/swap.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --ckpt pca_results/008-RAE/checkpoints/1280000.pt \
+  --img_a dog2.png \
+  --img_b cat.png \
+  --mode roi_swap \
+  --roi_a 5 11 5 11 \
+  --roi_b 3 9 8 14 \
+  --save out/swap_face_roi.png
+
+
+python src/swap_compare.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --ckpt pca_results/008-RAE/checkpoints/1280000.pt \
+  --img_a dog2.png \
+  --img_b cat.png \
+  --roi_a 5 11 5 11 \
+  --roi_b 3 9 8 14 \
+  --codeset_k 12 \
+  --codeset_mode union \
+  --save out/compare_swap.png
+
+
+
+### 0225
+python src/vqrae_token_retrieval.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --ckpt pca_results/008-RAE/checkpoints/1280000.pt \
+  --resize_mode crop \
+  --db_n 5000 \
+  --q_n 200 \
+  --topk 10
+
+python src/vqrae_token_retrieval.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --ckpt pca_results/008-RAE/checkpoints/1280000.pt \
+  --resize_mode crop \
+  --db_n 50000 \
+  --q_n 1000 \
+  --topk 10
+
+
+  python src/dump_vq_tokens.py \
+  --config configs/stage1/training/DINOv2-B_decXL.yaml \
+  --ckpt pca_results/008-RAE/checkpoints/1280000.pt \
+  --out_dir dumps/vqrae_imnetval_50k \
+  --db_n 50000 \
+  --q_n 1000 \
+  --resize_mode crop \
+  --seed 0
+
+
+python src/eval_bm25.py \
+  --dump_dir dumps/vqrae_imnetval_50k \
+  --vocab_size 1024 \
+  --topk 10
+
+
+## 과적합 해보기
+nohup python src/train_stage1_one.py \
+  --config configs/stage1/training/DINO_one.yaml \
+  --data-path oneimg \
+  --image-size 256 \
+  --precision fp16 \
+  --results-dir oneimg_overfit \
+  > oneimg.log 2>&1 &
+
+
+nohup python src/train_stage1_one.py \
+  --config configs/stage1/training/DINO_one.yaml \
+  --data-path oneimg \
+  --image-size 256 \
+  --precision fp16 \
+  --results-dir oneimg_overfit2 \
+  > oneimg2.log 2>&1 &

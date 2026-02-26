@@ -1,0 +1,99 @@
+stage_1:
+  target: stage1.RAE
+  params:
+    # -------- Encoder --------
+    encoder_cls: 'Dinov2withNorm'
+    encoder_config_path: 'facebook/dinov2-with-registers-base'
+    encoder_input_size: 224
+    encoder_params:
+      dinov2_path: 'facebook/dinov2-with-registers-base'
+      normalize: true
+
+    # -------- Decoder --------
+    decoder_config_path: '/workspace/Areum/RAE/configs/decoder/ViTXL'
+
+    # -------- Latent handling --------
+    noise_tau: 0.0              # 🔑 VQ에서는 반드시 0
+    reshape_to_2d: true
+
+    # -------- VQ --------
+    use_vq: true
+    vq_codebook_size: 1024
+    vq_embed_dim: 256
+    vq_commitment_cost: 0.25
+    vq_decay: 0.99
+    vq_eps: 1.0e-5
+    vq_z_norm: true
+
+    # -------- PCA reweighting --------
+    pca_stat_path: '/workspace/Areum/RAE/results/pca_stats_1m.pth'
+    pca_alpha: 0.25
+    pca_eps: 1.0e-6
+
+
+training:
+  # -------- Runtime --------
+  epochs: 10000              # 🔥 32 → 8 (현실적으로 충분)
+  ema_decay: 0.998
+
+  batch_size: 1          # per-GPU
+  num_workers: 0
+  clip_grad: 0.0
+
+  log_interval: 100
+  checkpoint_interval: 2500
+  sample_interval: 0
+
+  # -------- Optimizer --------
+  optimizer:
+    lr: 5.0e-5               # 낮은 lr이 VQ 안정적
+    betas: [0.9, 0.95]
+    weight_decay: 0.0
+
+  # -------- Scheduler --------
+  scheduler:
+    type: cosine
+    warmup_epochs: 10
+    decay_end_epoch: 80
+    base_lr: 5.0e-5
+    final_lr: 5.0e-6
+
+
+gan:
+  disc:
+    arch:
+      dino_ckpt_path: 'models/discs/dino_vit_small_patch8_224.pth'
+      ks: 9
+      norm_type: 'bn'
+      using_spec_norm: true
+      recipe: 'S_8'
+
+    optimizer:
+      lr: 2.0e-4
+      betas: [0.9, 0.95]
+      weight_decay: 0.0
+
+    scheduler:
+      type: cosine
+      warmup_epochs: 1
+      decay_end_epoch: 8
+      base_lr: 2.0e-4
+      final_lr: 2.0e-5
+
+    augment:
+      prob: 1.0
+      cutout: 0.0
+
+  loss:
+    disc_loss: hinge
+    gen_loss: vanilla
+
+    disc_weight: 0.25
+    perceptual_weight: 1.0
+
+    disc_start: 100         # 🔥 원래 16 → 4
+    disc_upd_start: 50
+    lpips_start: 200
+
+    max_d_weight: 10000.0
+    disc_updates: 1
